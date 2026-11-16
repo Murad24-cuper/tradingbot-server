@@ -1,0 +1,8 @@
+[Unit]
+Description=Trading bot hang watchdog (restarts the MT5 container when the heartbeat stops)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/tradingbot/deploy/linux/watchdog.py

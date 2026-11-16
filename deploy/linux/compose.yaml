@@ -1,0 +1,66 @@
+services:
+  mt5bot:
+    build:
+      context: ../..
+      dockerfile: deploy/linux/mt5/Dockerfile
+    container_name: tradingbot-mt5
+    restart: unless-stopped
+    mem_limit: 3g
+    shm_size: 512m
+    environment:
+      TZ: UTC
+      BOT_LOCATION: server
+    volumes:
+      - /opt/tradingbot:/opt/tradingbot
+      - /opt/tradingbot/.env:/opt/tradingbot/.env:ro
+      - wine:/opt/wine
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/tradingbot-healthcheck"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+    ports:
+      - "127.0.0.1:5900:5900"
+  dashboard:
+    build:
+      context: ../..
+      dockerfile: deploy/linux/dashboard.Dockerfile
+    container_name: tradingbot-dashboard
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      TZ: UTC
+      DASHBOARD_REQUIRE_PASSWORD: "1"
+      BOT_LOCATION: server
+    volumes:
+      - /opt/tradingbot:/opt/tradingbot
+      - /opt/tradingbot/data:/opt/tradingbot/data
+      - /opt/tradingbot/logs:/opt/tradingbot/logs
+    ports:
+      - "127.0.0.1:8000:8000"
+    # New panel (FastAPI + static app). Tunnel for the first login: ssh -L 8000:127.0.0.1:8000 ... then http://localhost:8000
+    command: ["python", "-m", "uvicorn", "src.panel.app:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+  caddy:
+    # HTTPS entrance for the panel: https://<PUBLIC_HOST> (certificate from Let's Encrypt, renewed automatically).
+    # PUBLIC_HOST is read from /opt/tradingbot/public_host.env, e.g. PUBLIC_HOST=16-192-113-6.sslip.io
+    image: caddy:2
+    container_name: tradingbot-caddy
+    restart: unless-stopped
+    mem_limit: 128m
+    depends_on:
+      - dashboard
+    env_file:
+      - path: /opt/tradingbot/public_host.env
+        required: false
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  wine:
+  caddy_data:
+  caddy_config:
